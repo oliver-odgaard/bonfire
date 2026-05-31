@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { authClient } from '../lib/auth-client';
+import { CURRENT_COMPANY } from '../lib/company';
 import ThiingsGrid from '../lib/ThiingsGrid';
+import Header from './components/Header';
+import ColleaguesGrid from './components/ColleaguesGrid';
+import OrganizationChart from './components/OrganizationChart';
 
 const GRID_SIZE = 208;
 const IMAGE_SIZE = 160;
@@ -59,7 +64,7 @@ function Cell({ interest, color, icon, onClick }) {
             alt={owner.name || ''}
             title={owner.name || ''}
             draggable={false}
-            className="absolute bottom-1.5 right-1.5 w-8 h-8 rounded-full object-cover bg-white ring-2 ring-white shadow-md pointer-events-none"
+            className="absolute bottom-1.5 right-1.5 w-8 h-8 rounded-full object-cover bg-white ring-2 ring-white pointer-events-none"
           />
         )}
       </div>
@@ -82,8 +87,12 @@ const iconOptions = [
 
 export default function Home() {
   const [interests, setInterests] = useState([]);
+  const [users, setUsers] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeView, setActiveView] = useState('interests');
+  const { data: activeOrg } = authClient.useActiveOrganization();
+  const activeCompany = activeOrg?.slug || CURRENT_COMPANY;
   const gridRef = useRef(null);
   const isModalOpenRef = useRef(false);
   const pointerDownRef = useRef(null);
@@ -95,7 +104,8 @@ export default function Home() {
   const fetchInterests = useCallback(async () => {
     const { data, error } = await supabase
       .from('interests')
-      .select('*, owner:users(id, name, avatar_url)')
+      .select('*, owner:users!inner(id, name, avatar_url, company)')
+      .eq('owner.company', activeCompany)
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -137,7 +147,7 @@ export default function Home() {
     }
 
     setInterests(interleaved);
-  }, []);
+  }, [activeCompany]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -156,6 +166,26 @@ export default function Home() {
       supabase.removeChannel(channel);
     };
   }, [fetchInterests]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, name, avatar_url, company')
+        .eq('company', activeCompany)
+        .order('id', { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        console.error('Error fetching users:', error);
+        return;
+      }
+      setUsers(data || []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCompany]);
 
   const closeModal = useCallback(() => {
     setIsModalOpen(false);
@@ -306,9 +336,21 @@ export default function Home() {
   return (
     <div
       className="h-screen w-screen overflow-hidden relative"
-      style={{ backgroundColor: '#FEFCF8' }}
+      style={{ backgroundColor: '#FFF7ED' }}
     >
-      <ThiingsGrid ref={gridRef} gridSize={GRID_SIZE} renderItem={renderItem} />
+      {activeView === 'colleagues' ? (
+        <ColleaguesGrid users={users} />
+      ) : activeView === 'organization' ? (
+        <OrganizationChart users={users} />
+      ) : (
+        <ThiingsGrid ref={gridRef} gridSize={GRID_SIZE} renderItem={renderItem} />
+      )}
+
+      <Header
+        active={activeView}
+        onActiveChange={setActiveView}
+        colleaguesCount={users.length}
+      />
 
       {selectedItem && (
         <div

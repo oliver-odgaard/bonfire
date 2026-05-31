@@ -48,4 +48,11 @@ body {
     transform: none !important;
     opacity: 1 !important;
   }
+
+  .header-enter,
+  .header-enter * {
+    transition: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
 }
